@@ -45,7 +45,13 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+
+	<!-- ✅ Autorisations localisation iOS -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Cette application nécessite l’accès à votre localisation pour afficher la météo locale.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Cette application a besoin d’un accès constant à votre localisation pour fournir des prévisions précises.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Cette application utilise votre localisation même en arrière-plan pour la météo.</string>
 </dict>
 </plist>

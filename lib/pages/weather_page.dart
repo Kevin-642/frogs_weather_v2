@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:geolocator/geolocator.dart';
 import '../models/weather.dart';
 import '../services/weather_service.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 
 class WeatherPage extends StatefulWidget {
   const WeatherPage({super.key});
@@ -11,126 +12,84 @@ class WeatherPage extends StatefulWidget {
   State<WeatherPage> createState() => _WeatherPageState();
 }
 
-class WeatherInfoTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-
-  const WeatherInfoTile({
-    super.key,
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        children: [
-          FaIcon(icon, color: Colors.white, size: 28),
-          const SizedBox(width: 16),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 18, color: Colors.white),
-          ),
-          const Spacer(),
-          Text(
-            value,
-            style: const TextStyle(
-                fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _WeatherPageState extends State<WeatherPage> {
   late WeatherService weatherService;
   Weather? _weather;
-  final TextEditingController _cityController = TextEditingController();
   bool _loading = false;
   String? _error;
+
+  bool _searchMode = false;
+  final TextEditingController _cityController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     weatherService = WeatherService('2e92e9dffff2887cf2e91ab428eed3f6');
-    _loadWeatherWithLocation();
-  }
-
-  Future<Position> _determinePosition() async {
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      throw Exception('Les services de localisation sont désactivés.');
-    }
-
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        throw Exception('Permission de localisation refusée');
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      throw Exception('Permission de localisation refusée définitivement');
-    }
-
-    return await Geolocator.getCurrentPosition();
-  }
-
-  Future<void> _loadWeatherWithLocation() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-
-    try {
-      final position = await _determinePosition();
-      final weather = await weatherService.fetchWeather(
-        lat: position.latitude,
-        lon: position.longitude,
-      );
-      setState(() {
-        _weather = weather;
-        _cityController.text = weather.city;
-      });
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-      });
-    } finally {
-      setState(() {
-        _loading = false;
-      });
-    }
+    _loadWeather(); // Chargement automatique au lancement
   }
 
   Future<void> _loadWeather([String? city]) async {
     setState(() {
       _loading = true;
       _error = null;
+      if (city != null) _cityController.text = city;
     });
+
     try {
-      final weather = await weatherService.fetchWeather(
-        city: city ?? _cityController.text,
-      );
+      String cityToSearch = city ?? _cityController.text.trim();
+
+      // Si aucune ville saisie, on tente la géolocalisation
+      if (cityToSearch.isEmpty) {
+        bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+        if (!serviceEnabled) {
+          throw Exception('La géolocalisation est désactivée.');
+        }
+
+        LocationPermission permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
+          if (permission == LocationPermission.denied) {
+            throw Exception('Permission de localisation refusée');
+          }
+        }
+
+        if (permission == LocationPermission.deniedForever) {
+          throw Exception('Permission refusée définitivement');
+        }
+
+        final Position position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+          ),
+        );
+
+        final List<Placemark> placemarks = await placemarkFromCoordinates(
+          position.latitude,
+          position.longitude,
+        );
+
+        if (placemarks.isEmpty || placemarks.first.locality == null) {
+          throw Exception("Impossible de déterminer la ville.");
+        }
+
+        cityToSearch = placemarks.first.locality!;
+      }
+
+      final weather = await weatherService.fetchWeather(city: cityToSearch);
+
       setState(() {
         _weather = weather;
+        _cityController.text = cityToSearch;
       });
     } catch (e) {
       setState(() {
-        _error = 'Erreur lors du chargement météo.';
+        _error = 'Erreur météo : ${e.toString()}';
+        _weather = null;
       });
     } finally {
       setState(() {
         _loading = false;
+        _searchMode = false;
       });
     }
   }
@@ -139,6 +98,24 @@ class _WeatherPageState extends State<WeatherPage> {
   void dispose() {
     _cityController.dispose();
     super.dispose();
+  }
+
+  Widget _buildInfoTile(IconData icon, String label, String value) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        FaIcon(icon, color: Colors.white, size: 28),
+        const SizedBox(height: 8),
+        Text(label,
+            style: const TextStyle(color: Colors.white70, fontSize: 14)),
+        const SizedBox(height: 4),
+        Text(value,
+            style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 16)),
+      ],
+    );
   }
 
   @override
@@ -152,91 +129,179 @@ class _WeatherPageState extends State<WeatherPage> {
               fit: BoxFit.cover,
               width: double.infinity,
               height: double.infinity,
-            ),
-          Container(
-            color: Colors.black.withAlpha((0.5 * 255).toInt()),
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _cityController,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              hintText: 'Entrez une ville',
-                              hintStyle: TextStyle(color: Colors.white54),
-                              filled: true,
-                              fillColor: Colors.white.withAlpha(30),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide.none,
+            )
+          else
+            Container(color: Colors.blueGrey.shade900),
+          Container(color: Colors.black.withAlpha(150)),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      _searchMode
+                          ? Expanded(
+                              child: TextField(
+                                autofocus: true,
+                                controller: _cityController,
+                                style: const TextStyle(color: Colors.white),
+                                decoration: InputDecoration(
+                                  hintText: 'Entrez une ville',
+                                  hintStyle:
+                                      const TextStyle(color: Colors.white54),
+                                  filled: true,
+                                  fillColor: Colors.white.withAlpha(30),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  suffixIcon: IconButton(
+                                    icon: const Icon(Icons.close,
+                                        color: Colors.white),
+                                    onPressed: () {
+                                      setState(() {
+                                        _searchMode = false;
+                                        _cityController.clear();
+                                      });
+                                    },
+                                  ),
+                                ),
+                                onSubmitted: (value) {
+                                  if (value.trim().isNotEmpty) {
+                                    _loadWeather(value.trim());
+                                  }
+                                },
                               ),
+                            )
+                          : IconButton(
+                              icon:
+                                  const Icon(Icons.search, color: Colors.white),
+                              onPressed: () {
+                                setState(() {
+                                  _searchMode = true;
+                                });
+                              },
                             ),
-                            onSubmitted: (_) => _loadWeather(),
+                      Expanded(
+                        child: Center(
+                          child: Text(
+                            _weather?.city ?? 'Chargement...',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black54,
+                                  offset: Offset(1, 1),
+                                  blurRadius: 2,
+                                )
+                              ],
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: _loading ? null : () => _loadWeather(),
-                          child: _loading
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Icon(Icons.search),
-                        ),
-                      ],
+                      ),
+                      IconButton(
+                        icon: _loading
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.refresh, color: Colors.white),
+                        onPressed: _loading ? null : () => _loadWeather(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 40),
+                  if (_weather != null) ...[
+                    Text(
+                      '${_weather!.temperature.toStringAsFixed(1)} °C',
+                      style: const TextStyle(
+                        fontSize: 72,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black87,
+                            offset: Offset(2, 2),
+                            blurRadius: 4,
+                          )
+                        ],
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                    const SizedBox(height: 20),
-                    if (_error != null)
-                      Text(
+                    const SizedBox(height: 8),
+                    Text(
+                      _weather!.description.capitalize(),
+                      style: const TextStyle(
+                        fontSize: 22,
+                        color: Colors.white70,
+                        fontStyle: FontStyle.italic,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                  const SizedBox(height: 40),
+                  if (_weather != null)
+                    Expanded(
+                      child: Center(
+                        child: Wrap(
+                          alignment: WrapAlignment.center,
+                          spacing: 40,
+                          runSpacing: 24,
+                          children: [
+                            _buildInfoTile(
+                                Icons.thermostat_outlined,
+                                'Ressentie',
+                                '${_weather!.feelsLike.toStringAsFixed(1)} °C'),
+                            _buildInfoTile(FontAwesomeIcons.droplet, 'Humidité',
+                                '${_weather!.humidity} %'),
+                            _buildInfoTile(FontAwesomeIcons.wind, 'Vent',
+                                '${_weather!.windSpeed.toStringAsFixed(1)} km/h'),
+                            _buildInfoTile(FontAwesomeIcons.gauge, 'Pression',
+                                '${_weather!.pressure} hPa'),
+                            _buildInfoTile(FontAwesomeIcons.cloudRain, 'Pluie',
+                                '${_weather!.rainVolumeLastHour} mm'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 20),
+                      child: Text(
                         _error!,
                         style: const TextStyle(
                             color: Colors.redAccent, fontSize: 16),
                       ),
-                    if (_weather == null && _error == null && !_loading)
-                      const Expanded(
-                        child: Center(
-                          child: Text('Aucune donnée météo',
-                              style: TextStyle(color: Colors.white)),
+                    ),
+                  if (!_loading && _weather == null && _error == null)
+                    const Expanded(
+                      child: Center(
+                        child: Text(
+                          'Aucune donnée météo',
+                          style: TextStyle(color: Colors.white70, fontSize: 18),
                         ),
                       ),
-                    if (_weather != null) ...[
-                      Text(
-                        _weather!.city,
-                        style:
-                            const TextStyle(fontSize: 32, color: Colors.white),
-                      ),
-                      const SizedBox(height: 20),
-                      WeatherInfoTile(
-                        icon: FontAwesomeIcons.temperatureHalf,
-                        label: "Température",
-                        value: "${_weather!.temperature} °C",
-                      ),
-                      WeatherInfoTile(
-                        icon: FontAwesomeIcons.droplet,
-                        label: "Humidité",
-                        value: "${_weather!.humidity} %",
-                      ),
-                      WeatherInfoTile(
-                        icon: FontAwesomeIcons.wind,
-                        label: "Vent",
-                        value: "${_weather!.windSpeed} km/h",
-                      ),
-                    ],
-                  ],
-                ),
+                    ),
+                ],
               ),
             ),
           ),
         ],
       ),
     );
+  }
+}
+
+extension StringExtension on String {
+  String capitalize() {
+    if (isEmpty) return this;
+    return this[0].toUpperCase() + substring(1);
   }
 }
