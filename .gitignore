@@ -1,0 +1,17 @@
+# Flutter/Dart stuff
+.dart_tool/
+.packages
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.idea/
+.vscode/
+*.iml
+
+# Env vars / secrets
+.env
+
+# OS
+.DS_Store
+Thumbs.db
