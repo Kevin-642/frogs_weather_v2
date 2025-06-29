@@ -2,72 +2,82 @@ class Weather {
   final String city;
   final double temperature;
   final String description;
-  final String iconCode;
-  final double feelsLike;
   final int humidity;
   final double windSpeed;
+  final DateTime sunrise;
+  final DateTime sunset;
+  final double latitude;
+  final double longitude;
+  final String icon;
+  final double feelsLike;
   final int pressure;
-  final double rainVolumeLastHour;
+  final double precipitationProbability;
 
   Weather({
     required this.city,
     required this.temperature,
     required this.description,
-    required this.iconCode,
-    required this.feelsLike,
     required this.humidity,
     required this.windSpeed,
+    required this.sunrise,
+    required this.sunset,
+    required this.latitude,
+    required this.longitude,
+    required this.icon,
+    required this.feelsLike,
     required this.pressure,
-    required this.rainVolumeLastHour,
+    required this.precipitationProbability,
   });
-
-  // Ajout d'une méthode pour mapper iconCode à image locale
-  String get backgroundImage {
-    switch (iconCode) {
-      case '01d':
-        return 'assets/images/sunny.jpg';
-      case '01n':
-        return 'assets/images/sunny.jpg'; // tu peux changer pour une version nuit si tu en as
-      case '02d':
-      case '03d':
-      case '04d':
-      case '02n':
-      case '03n':
-      case '04n':
-        return 'assets/images/cloudy.jpg';
-      case '09d':
-      case '10d':
-      case '09n':
-      case '10n':
-        return 'assets/images/rainy.jpg';
-      case '11d':
-      case '11n':
-        return 'assets/images/stormy.jpg';
-      case '13d':
-      case '13n':
-        return 'assets/images/snowy.jpg';
-      case '50d':
-      case '50n':
-        return 'assets/images/mist.jpg';
-      default:
-        return 'assets/images/default.jpg';
-    }
-  }
 
   factory Weather.fromJson(Map<String, dynamic> json) {
     return Weather(
-      city: json['name'] ?? 'Inconnue',
+      city: json['name'],
       temperature: (json['main']['temp'] as num).toDouble(),
       description: json['weather'][0]['description'],
-      iconCode: json['weather'][0]['icon'],
-      feelsLike: (json['main']['feels_like'] as num).toDouble(),
-      humidity: json['main']['humidity'],
+      humidity: json['main']['humidity'] as int,
       windSpeed: (json['wind']['speed'] as num).toDouble(),
-      pressure: json['main']['pressure'],
-      rainVolumeLastHour:
-          json.containsKey('rain') && json['rain'].containsKey('1h')
-              ? (json['rain']['1h'] as num).toDouble()
-              : 0,
+      feelsLike: (json['main']['feels_like'] as num).toDouble(),
+      pressure: json['main']['pressure'] as int,
+      precipitationProbability:
+          json.containsKey('pop') ? (json['pop'] as num).toDouble() * 100 : 0.0,
+      sunrise: DateTime.fromMillisecondsSinceEpoch(
+        (json['sys']['sunrise'] as int) * 1000,
+        isUtc: true,
+      ).toLocal(),
+      sunset: DateTime.fromMillisecondsSinceEpoch(
+        (json['sys']['sunset'] as int) * 1000,
+        isUtc: true,
+      ).toLocal(),
+      latitude: (json['coord']['lat'] as num).toDouble(),
+      longitude: (json['coord']['lon'] as num).toDouble(),
+      icon: json['weather'][0]['icon'],
     );
+  }
+
+  String getWeatherBackground(String condition) {
+    final normalized = condition.toLowerCase();
+
+    if (normalized.contains('dégagé') || normalized.contains('soleil')) {
+      return 'sunny.jpg';
+    }
+    if (normalized.contains('nuage')) {
+      return 'cloudy.jpg';
+    }
+    if (normalized.contains('pluie') || normalized.contains('bruine')) {
+      return 'rainy.jpg';
+    }
+    if (normalized.contains('orage') || normalized.contains('foudre')) {
+      return 'stormy.jpg';
+    }
+    if (normalized.contains('brouillard') ||
+        normalized.contains('brume') ||
+        normalized.contains('brumeux')) {
+      return 'mist.jpg';
+    }
+    if (normalized.contains('neige')) {
+      return 'snowy.jpg';
+    }
+
+    return 'default.jpg';
   }
 }

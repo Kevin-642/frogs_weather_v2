@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:geolocator/geolocator.dart';
 import '../models/weather.dart';
+import '../models/forecast.dart';
+import '../widgets/horizontal_forecast_list.dart';
 import '../services/weather_service.dart';
+import '../services/location_service.dart';
 
 class WeatherPage extends StatefulWidget {
   const WeatherPage({super.key});
@@ -11,232 +12,292 @@ class WeatherPage extends StatefulWidget {
   State<WeatherPage> createState() => _WeatherPageState();
 }
 
-class WeatherInfoTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-
-  const WeatherInfoTile({
-    super.key,
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        children: [
-          FaIcon(icon, color: Colors.white, size: 28),
-          const SizedBox(width: 16),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 18, color: Colors.white),
-          ),
-          const Spacer(),
-          Text(
-            value,
-            style: const TextStyle(
-                fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _WeatherPageState extends State<WeatherPage> {
-  late WeatherService weatherService;
+  final _weatherService = WeatherService();
+  final _locationService = LocationService();
+  final _cityController = TextEditingController();
+
   Weather? _weather;
-  final TextEditingController _cityController = TextEditingController();
-  bool _loading = false;
+  Forecast? _forecast;
   String? _error;
+  bool _isSearching = false;
 
   @override
   void initState() {
     super.initState();
-    weatherService = WeatherService('2e92e9dffff2887cf2e91ab428eed3f6');
-    _loadWeatherWithLocation();
+    _loadWeatherByLocation();
   }
 
-  Future<Position> _determinePosition() async {
-    bool serviceEnabled;
-    LocationPermission permission;
+  Future<void> _loadWeatherByLocation() async {
+    try {
+      final position = await _locationService.getCurrentPosition();
+      final weather = await _weatherService.fetchWeatherByLocation(
+        position.latitude,
+        position.longitude,
+      );
+      final forecast = await _weatherService.fetchForecast(
+        position.latitude,
+        position.longitude,
+      );
 
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      throw Exception('Les services de localisation sont désactivés.');
+      setState(() {
+        _weather = weather;
+        _forecast = forecast;
+        _error = null;
+      });
+    } catch (e) {
+      debugPrint('Erreur météo localisée : $e');
+      setState(() {
+        _error = 'Impossible de charger la météo locale.';
+      });
     }
-
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        throw Exception('Permission de localisation refusée');
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      throw Exception('Permission de localisation refusée définitivement');
-    }
-
-    return await Geolocator.getCurrentPosition();
   }
 
-  Future<void> _loadWeatherWithLocation() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _searchCity() async {
+    final city = _cityController.text.trim();
+    if (city.isEmpty) return;
 
     try {
-      final position = await _determinePosition();
-      final weather = await weatherService.fetchWeather(
-        lat: position.latitude,
-        lon: position.longitude,
+      final weather = await _weatherService.fetchWeatherByCity(city);
+      final forecast = await _weatherService.fetchForecast(
+        weather.latitude,
+        weather.longitude,
       );
       setState(() {
         _weather = weather;
-        _cityController.text = weather.city;
+        _forecast = forecast;
+        _error = null;
+        _isSearching = false;
       });
+      _cityController.clear();
     } catch (e) {
+      debugPrint('Erreur recherche ville : $e');
       setState(() {
-        _error = e.toString();
-      });
-    } finally {
-      setState(() {
-        _loading = false;
+        _error = 'Ville non trouvée.';
       });
     }
-  }
-
-  Future<void> _loadWeather([String? city]) async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final weather = await weatherService.fetchWeather(
-        city: city ?? _cityController.text,
-      );
-      setState(() {
-        _weather = weather;
-      });
-    } catch (e) {
-      setState(() {
-        _error = 'Erreur lors du chargement météo.';
-      });
-    } finally {
-      setState(() {
-        _loading = false;
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _cityController.dispose();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
-        children: [
-          if (_weather != null)
-            Image.asset(
-              _weather!.backgroundImage,
-              fit: BoxFit.cover,
-              width: double.infinity,
-              height: double.infinity,
-            ),
-          Container(
-            color: Colors.black.withAlpha((0.5 * 255).toInt()),
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
+      body: _weather == null
+          ? const Center(child: CircularProgressIndicator())
+          : Container(
+              decoration: BoxDecoration(
+                image: DecorationImage(
+                  image: AssetImage(
+                    'assets/images/${_weatherService.getWeatherBackground(_weather!.description)}',
+                  ),
+                  fit: BoxFit.cover,
+                ),
+              ),
+              child: SafeArea(
                 child: Column(
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _cityController,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              hintText: 'Entrez une ville',
-                              hintStyle: TextStyle(color: Colors.white54),
-                              filled: true,
-                              fillColor: Colors.white.withAlpha(30),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide.none,
-                              ),
-                            ),
-                            onSubmitted: (_) => _loadWeather(),
+                    _isSearching ? _buildSearchBar() : _buildTopBar(),
+                    if (_error != null)
+                      Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Text(
+                          _error!,
+                          style: const TextStyle(
+                            color: Colors.redAccent,
+                            fontSize: 18,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: _loading ? null : () => _loadWeather(),
-                          child: _loading
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Icon(Icons.search),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    if (_error != null)
-                      Text(
-                        _error!,
-                        style: const TextStyle(
-                            color: Colors.redAccent, fontSize: 16),
-                      ),
-                    if (_weather == null && _error == null && !_loading)
-                      const Expanded(
-                        child: Center(
-                          child: Text('Aucune donnée météo',
-                              style: TextStyle(color: Colors.white)),
+                      )
+                    else
+                      Expanded(
+                        child: ListView(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          children: [
+                            const SizedBox(height: 24),
+                            _buildMainWeather(),
+                            const SizedBox(height: 24),
+                            _buildWeatherDetailsGrid(),
+                            const SizedBox(height: 24),
+                            if (_forecast != null) _buildForecast(),
+                          ],
                         ),
                       ),
-                    if (_weather != null) ...[
-                      Text(
-                        _weather!.city,
-                        style:
-                            const TextStyle(fontSize: 32, color: Colors.white),
-                      ),
-                      const SizedBox(height: 20),
-                      WeatherInfoTile(
-                        icon: FontAwesomeIcons.temperatureHalf,
-                        label: "Température",
-                        value: "${_weather!.temperature} °C",
-                      ),
-                      WeatherInfoTile(
-                        icon: FontAwesomeIcons.droplet,
-                        label: "Humidité",
-                        value: "${_weather!.humidity} %",
-                      ),
-                      WeatherInfoTile(
-                        icon: FontAwesomeIcons.wind,
-                        label: "Vent",
-                        value: "${_weather!.windSpeed} km/h",
-                      ),
-                    ],
                   ],
                 ),
               ),
             ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+      child: TextField(
+        controller: _cityController,
+        autofocus: true,
+        onSubmitted: (_) => _searchCity(),
+        decoration: InputDecoration(
+          hintText: 'Rechercher une ville',
+          filled: true,
+          fillColor: Colors.white.withAlpha(230),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          suffixIcon: IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: _searchCity,
+          ),
+          prefixIcon: IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () {
+              setState(() {
+                _isSearching = false;
+                _error = null;
+              });
+              _cityController.clear();
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.search, color: Colors.white, size: 28),
+            onPressed: () {
+              setState(() {
+                _isSearching = true;
+                _error = null;
+              });
+            },
+          ),
+          Expanded(
+            child: Center(
+              child: Text(
+                _weather?.city ?? 'Chargement...',
+                style: const TextStyle(
+                  fontSize: 22,
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  shadows: [
+                    Shadow(
+                      blurRadius: 4,
+                      color: Colors.black54,
+                      offset: Offset(1, 1),
+                    ),
+                  ],
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white, size: 28),
+            onPressed: _loadWeatherByLocation,
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildMainWeather() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '${_weather!.temperature.toStringAsFixed(1)}°C',
+          style: const TextStyle(
+            fontSize: 72,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+            shadows: [
+              Shadow(
+                blurRadius: 8,
+                color: Colors.black54,
+                offset: Offset(2, 2),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          _weather!.description,
+          style: const TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w400,
+            color: Colors.white70,
+            shadows: [
+              Shadow(
+                blurRadius: 6,
+                color: Colors.black38,
+                offset: Offset(1, 1),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWeatherDetailsGrid() {
+    if (_weather == null) return const SizedBox.shrink();
+
+    Widget detailItem(IconData icon, String label, Color color) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 32, color: color),
+          const SizedBox(height: 6),
+          Text(label, style: const TextStyle(color: Colors.white)),
+        ],
+      );
+    }
+
+    return GridView(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 20,
+        crossAxisSpacing: 20,
+        childAspectRatio: 1,
+      ),
+      children: [
+        detailItem(
+            Icons.thermostat,
+            'Ressenti\n${_weather!.feelsLike.toStringAsFixed(1)}°C',
+            Colors.orangeAccent),
+        detailItem(Icons.water_drop, 'Humidité\n${_weather!.humidity}%',
+            Colors.lightBlueAccent),
+        detailItem(
+            Icons.air, 'Vent\n${_weather!.windSpeed} km/h', Colors.greenAccent),
+        detailItem(Icons.speed, 'Pression\n${_weather!.pressure} hPa',
+            Colors.amberAccent),
+        detailItem(
+            Icons.umbrella,
+            'Pluie\n${_weather!.precipitationProbability.toStringAsFixed(0)}%',
+            Colors.blueAccent),
+        detailItem(Icons.wb_sunny, 'Lever\n${_formatTime(_weather!.sunrise)}',
+            Colors.yellowAccent),
+      ],
+    );
+  }
+
+  String _formatTime(DateTime dt) {
+    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildForecast() {
+    return SizedBox(
+      height: 180,
+      child: HorizontalForecastList(forecastDays: _forecast!.days),
     );
   }
 }

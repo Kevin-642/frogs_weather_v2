@@ -1,35 +1,33 @@
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'weather_info_item.dart';
 
 class WeatherInfoTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
+  final String humidity;
+  final String wind;
+  final String sunrise;
+  final String sunset;
 
   const WeatherInfoTile({
     super.key,
-    required this.icon,
-    required this.label,
-    required this.value,
+    required this.humidity,
+    required this.wind,
+    required this.sunrise,
+    required this.sunset,
   });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          FaIcon(icon, color: Colors.white, size: 24),
-          const SizedBox(width: 12),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 18, color: Colors.white70),
-          ),
-          const Spacer(),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 18, color: Colors.white),
-          ),
+          WeatherInfoItem(
+              icon: Icons.water_drop, label: 'Humidité', value: '$humidity%'),
+          WeatherInfoItem(icon: Icons.air, label: 'Vent', value: '$wind km/h'),
+          WeatherInfoItem(icon: Icons.wb_sunny, label: 'Lever', value: sunrise),
+          WeatherInfoItem(
+              icon: Icons.nightlight_round, label: 'Coucher', value: sunset),
         ],
       ),
     );
