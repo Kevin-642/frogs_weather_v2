@@ -6,16 +6,19 @@
 build/
 .flutter-plugins
 .flutter-plugins-dependencies
-.melos_tool/
 generated_plugin_registrant.dart
+constants/api_keys.dart
 
 # VS Code
 .vscode/
 
-# IntelliJ
+# IntelliJ / Android Studio
 *.iml
 .idea/
 
-# Others
+# Logs and locks
 *.log
 *.lock
+
+# Misc
+.flutter-plugins

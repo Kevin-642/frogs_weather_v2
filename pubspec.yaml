@@ -1,29 +1,20 @@
 name: frogs_weather_v2
-description: "A new Flutter project."
-publish_to: 'none'
+description: Application météo complète avec prévisions, fond dynamique et alertes météo
 
-version: 1.1.0
+version: 1.0.0+1
 
 environment:
-  sdk: ">=3.3.0 <4.0.0"
+  sdk: '>=3.2.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
-    
-  cupertino_icons: ^1.0.8
-  http: ^1.4.0
+  http: ^1.1.0
   geolocator: ^14.0.1
   intl: ^0.20.2
-  shared_preferences: ^2.5.3
-  flutter_local_notifications: ^19.2.1
-  flutter_localizations:
-    sdk: flutter
-  timezone: ^0.10.1
   provider: ^6.1.2
-  font_awesome_flutter: ^10.8.0
-  logger: ^2.5.0
-  geocoding: ^4.0.0
+  flutter_local_notifications: ^19.3.0
+  logger: ^2.6.0
 
 dev_dependencies:
   flutter_test:
@@ -32,13 +23,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  generate: true
 
   assets:
-    - assets/images/sunny.jpg
-    - assets/images/cloudy.jpg
-    - assets/images/rainy.jpg
-    - assets/images/stormy.jpg
-    - assets/images/snowy.jpg
-    - assets/images/mist.jpg
-    - assets/images/default.jpg
+    - assets/images/
+    - assets/icons/
